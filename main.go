@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 type targetDeviceInfo struct {
@@ -16,6 +17,10 @@ type targetDeviceInfo struct {
 	boardID     uint64
 	chipID      uint64
 	productName string
+}
+
+func (targetDeviceInfo *targetDeviceInfo) String() string {
+	return fmt.Sprintf("%s [%s] - BoardID: 0x%02x, ChipID: 0x%04x, DeviceClass: %s", targetDeviceInfo.productType, targetDeviceInfo.productName, targetDeviceInfo.boardID, targetDeviceInfo.chipID, targetDeviceInfo.deviceClass)
 }
 
 var targetDevices = []targetDeviceInfo{
@@ -378,9 +383,52 @@ var targetDevices = []targetDeviceInfo{
 
 func main() {
 	ipswPath := flag.String("ipsw", "", "Path to the IPSW file")
-	deviceModel := flag.String("device", "", "Device product type (for example, iPhone11,6)")
+	deviceModel := flag.String("device", "", "Device product type (for example, iPhone11,6), [-search mode support] ")
 	ecidFlag := flag.String("ecid", "", "ECID of the device")
+	bsearch := flag.Bool("query", false, "Enable device information query")
+	devclss := flag.String("deviceclass", "", "Device class of the device, -query mode only")
+	boardid := flag.String("boardid", "", "Board ID of the device, in hexadecimal format, -query mode only")
+	chipid := flag.String("chipid", "", "Chip ID of the device, in hexadecimal format, -query mode only")
 	flag.Parse()
+
+	if *bsearch {
+		log.Println("[+] Device information search results:")
+		var bid uint64 = 0
+		var cid uint64 = 0
+		if *boardid != "" {
+			*boardid = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(*boardid)), "0x")
+			bidVal, err := strconv.ParseUint(*boardid, 16, 32)
+			if err == nil {
+				bid = bidVal
+			}
+		}
+		if *chipid != "" {
+			*chipid = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(*chipid)), "0x")
+			cidVal, err := strconv.ParseUint(*chipid, 16, 32)
+			if err == nil {
+				cid = cidVal
+			}
+		}
+		i := 1
+		for _, candidate := range targetDevices {
+			if *deviceModel != "" && candidate.productType != *deviceModel {
+				continue
+			}
+			if *devclss != "" && candidate.deviceClass != *devclss {
+				continue
+			}
+			if *boardid != "" && candidate.boardID != bid {
+				continue
+			}
+			if *chipid != "" && candidate.chipID != cid {
+				continue
+			}
+			fmt.Printf("%d=%s\n", i, candidate.String())
+			i++
+		}
+		// break
+		return
+	}
 
 	if *ipswPath == "" {
 		log.Fatalf("[-] You must specify the path to the IPSW file using -ipsw")
@@ -392,7 +440,8 @@ func main() {
 
 	ecid := uint64(0x001974103C50003A)
 	if *ecidFlag != "" {
-		val, err := strconv.ParseUint(*ecidFlag, 16, 64)
+		ecIDText := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(*ecidFlag)), "0x")
+		val, err := strconv.ParseUint(ecIDText, 16, 64)
 		if err != nil {
 			fmt.Println("[-] Error parsing hex:", err)
 			return
